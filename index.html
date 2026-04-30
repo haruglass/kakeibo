@@ -15,31 +15,32 @@
     .container { max-width: 500px; margin: auto; height: 100vh; display: flex; flex-direction: column; position: relative; }
     .tab-content { flex: 1; overflow-y: auto; padding: 12px; padding-bottom: 85px; }
     .display-none { display: none !important; }
-    
-    /* フォーム設定 */
     .field { margin-bottom: 0.6rem !important; }
     .input, .select select { font-size: 1.1rem !important; background-color: var(--card) !important; color: #fff !important; border: 1px solid var(--border) !important; height: 2.6em; }
     .label { color: var(--sub) !important; font-size: 0.9rem !important; margin-bottom: 0.2rem !important; font-weight: normal; }
-    
-    /* 統計・履歴の文字色修正 */
     .stat-card { border-bottom: 1px solid var(--border); padding: 20px 0; }
-    .main-expense { font-size: 2.3rem; font-weight: bold; color: #ffffff !important; }
-    .detail-item strong { color: #ffffff !important; }
-    .history-amount { font-size: 1.2rem; font-weight: bold; color: #ffffff !important; }
-    .history-item { border-bottom: 1px solid var(--border); padding: 12px 0; position: relative; }
-    
-    /* ナビゲーション */
+    .main-expense { font-size: 2.3rem; font-weight: bold; line-height: 1.1; margin: 5px 0; }
+    .sub-info { font-size: 1rem; color: var(--sub); display: flex; gap: 20px; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+    .detail-item { font-size: 1rem; background: var(--card); border: 1px solid var(--border); padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; }
+    .history-item { border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 1rem; position: relative; }
+    .history-top { display: flex; justify-content: space-between; align-items: flex-end; padding-right: 50px; }
+    .history-date { font-size: 0.85rem; color: var(--sub); }
+    .history-amount { font-size: 1.2rem; font-weight: bold; color: #fff; }
+    .delete-btn { position: absolute; right: 0; top: 12px; color: #ff6666; font-size: 0.8rem; border: 1px solid #ff6666; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+    #trend-view { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg); z-index: 1000; padding: 20px; display: flex; flex-direction: column; }
+    .trend-list-scroll { flex: 1; overflow-y: auto; }
+    .trend-list-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 1.2rem; color: #ffffff; }
     .navbar-bottom { position: absolute; bottom: 0; width: 100%; background: #1a1a1a; border-top: 1px solid var(--border); display: flex; height: 75px; z-index: 500; }
     .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.9rem; color: #666; cursor: pointer; }
     .nav-item.is-active { color: #fff; font-weight: bold; border-top: 3px solid #fff; }
-    
-    .btn-submit { background: #eeeeee !important; color: #000 !important; font-weight: bold; width: 100%; padding: 14px; border-radius: 6px; font-size: 1.3rem; margin-top: 10px; }
-    #loading { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; z-index:2000; color: white; }
-    .delete-btn { position: absolute; right: 0; top: 12px; color: #ff6666; font-size: 0.8rem; border: 1px solid #ff6666; padding: 2px 8px; border-radius: 4px; }
+    .btn-submit { background: #eeeeee !important; color: #000 !important; font-weight: bold; border: none; width: 100%; padding: 14px; border-radius: 6px; font-size: 1.3rem; margin-top: 10px; }
+    .back-btn { background: var(--card); color: #fff; border: 1px solid var(--border); padding: 10px 20px; border-radius: 6px; margin-bottom: 15px; align-self: flex-start; }
+    #loading { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); display:none; justify-content:center; align-items:center; z-index:2000; }
   </style>
 </head>
 <body>
-  <div id="loading">通信中...</div>
+  <div id="loading">読み込み中...</div>
   <div class="container">
     <div id="page-input" class="tab-content">
       <form id="kakeiboForm">
@@ -55,14 +56,17 @@
         </div>
         <div id="category-field" class="field"><label class="label">カテゴリー</label><div class="select is-fullwidth"><select id="category"></select></div></div>
         <div class="field"><label class="label">メモ</label><input class="input" type="text" id="memo"></div>
-        <button type="submit" class="btn-submit">記録する</button>
+        <button type="submit" id="submitBtn" class="btn-submit">記録する</button>
       </form>
     </div>
-
     <div id="page-history" class="tab-content display-none"><div id="history-list"></div></div>
     <div id="page-balance" class="tab-content display-none"><div id="balance-list"></div></div>
     <div id="page-stats" class="tab-content display-none"><div id="stats-list"></div></div>
-
+    <div id="trend-view" class="display-none">
+      <button class="back-btn" onclick="closeTrend()">← 戻る</button>
+      <h3 id="trend-title" style="font-size:1.5rem; font-weight:bold; color:white;"></h3>
+      <div id="trend-data-list" class="trend-list-scroll"></div>
+    </div>
     <nav class="navbar-bottom">
       <div class="nav-item is-active" id="nav-input" onclick="switchTab('input')"><span>記録</span></div>
       <div class="nav-item" id="nav-history" onclick="switchTab('history')"><span>履歴</span></div>
@@ -72,11 +76,11 @@
   </div>
 
   <script>
-    // --- ここを自分のURLに書き換える ---
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwidKnpabBiYCSgH8GQ7X0VsFb4R_3jedpJUIEiencZoJxiT-cFrVAc3NHK74N_T3As6Q/exec";
-    // ------------------------------
-
     const categories = { "支出": ["食費", "趣味", "服 美容", "生活費", "交際費", "医療", "その他", "調整"], "収入": ["年金", "給料", "お小遣い", "利子", "その他"] };
+    const expenseLabels = ["食費", "趣味", "服 美容", "生活費", "交際費", "医療", "その他", "調整"];
+    const incomeLabels = ["年金", "給料", "お小遣い", "利子", "その他"];
+    let currentStatsData = [];
 
     function calculateAmount(input) {
       try {
@@ -95,63 +99,72 @@
       if (categories[type]) categories[type].forEach(c => catSelect.add(new Option(c, c)));
     }
 
-    // タブ切り替えの修正：表示の切り替えを先に行う
     function switchTab(tab) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.add('display-none'));
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('is-active'));
       document.getElementById('page-' + tab).classList.remove('display-none');
       document.getElementById('nav-' + tab).classList.add('is-active');
-      
-      if(tab !== 'input') {
-        loadData();
-      }
+      if(tab !== 'input') loadData();
     }
 
     async function loadData() {
-      if (!GAS_URL.startsWith("http")) {
-        console.warn("GAS_URLが設定されていません。");
-        return;
-      }
       document.getElementById('loading').style.display = 'flex';
       try {
         const response = await fetch(GAS_URL);
         const data = await response.json();
+        currentStatsData = data.statsBody;
         
-        // 履歴の描画
         document.getElementById('history-list').innerHTML = data.history.map(item => `
           <div class="history-item">
-            <div class="is-flex is-justify-content-space-between">
-              <span style="color:var(--sub); font-size:0.85rem;">${item.date} · ${item.account}</span>
-              <strong class="history-amount">¥${Number(item.amount).toLocaleString()}</strong>
-            </div>
-            <div style="font-size:0.85rem; color:var(--sub)">${item.category} ${item.memo ? '· '+item.memo : ''}</div>
+            <div class="history-top"><span>${item.date} · ${item.account}</span><strong>¥${Number(item.amount).toLocaleString()}</strong></div>
+            <div style="font-size:0.85rem; color:var(--sub)">${item.category} (${item.type}) ${item.memo ? '· '+item.memo : ''}</div>
+            <div class="delete-btn" onclick="confirmDelete(${item.rowNum})">削除</div>
           </div>`).join('');
 
-        // 統計の描画（簡易版）
-        document.getElementById('stats-list').innerHTML = data.statsBody.map(row => `
-          <div class="stat-card">
-            <div style="color:var(--sub)">${row[0]}</div>
-            <div class="main-expense">¥${row[1].toLocaleString()}</div>
-            <div style="color:var(--sub); font-size:0.9rem;">収入: ¥${row[11].toLocaleString()} / 収支: ¥${row[17].toLocaleString()}</div>
-          </div>`).join('');
-
-        // 資産の描画
         document.getElementById('balance-list').innerHTML = data.balances.map(row => `
-          <div class="is-flex is-justify-content-space-between py-4" style="border-bottom:1px solid var(--border); font-size:1.2rem">
+          <div class="is-flex is-justify-content-space-between py-4" style="border-bottom:1px solid var(--border); font-size:1.3rem">
             <span>${row[0]}</span><strong style="color:#fff">¥${Number(row[1]||0).toLocaleString()}</strong>
           </div>`).join('');
-          
-      } catch (e) {
-        console.error("データ取得エラー:", e);
+        
+        document.getElementById('stats-list').innerHTML = data.statsBody.map((row) => `
+          <div class="stat-card">
+            <div style="color:var(--sub)">${row[0].replace('/', '年')}月</div>
+            <div onclick="showTrend('支出合計', 1)">
+              <div class="main-expense">¥${row[1].toLocaleString()}</div>
+              <div class="sub-info">
+                <span onclick="event.stopPropagation(); showTrend('収入合計', 11);" style="border-bottom:1px solid var(--sub)">収入 ¥${row[11].toLocaleString()}</span>
+                <span onclick="event.stopPropagation(); showTrend('収支', 17);" style="border-bottom:1px solid var(--sub)">収支 ¥${row[17].toLocaleString()}</span>
+              </div>
+            </div>
+            <div class="detail-grid">
+              ${expenseLabels.map((l, i) => `<div class="detail-item" onclick="showTrend('${l}', ${i+2})"><span>${l}</span><strong>¥${row[i+2].toLocaleString()}</strong></div>`).join('')}
+              ${incomeLabels.map((l, i) => `<div class="detail-item" onclick="showTrend('${l}', ${i+12})"><span>${l}</span><strong>¥${row[i+12].toLocaleString()}</strong></div>`).join('')}
+            </div>
+          </div>`).join('');
       } finally {
         document.getElementById('loading').style.display = 'none';
       }
     }
 
+    async function confirmDelete(rowNum) {
+      if (!confirm("削除しますか？")) return;
+      document.getElementById('loading').style.display = 'flex';
+      await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ method: 'delete', rowNum: rowNum }) });
+      loadData();
+    }
+
+    function showTrend(label, colIdx) {
+      document.getElementById('trend-view').classList.remove('display-none');
+      document.getElementById('trend-title').innerText = label + " の推移";
+      document.getElementById('trend-data-list').innerHTML = currentStatsData.map(r => `
+        <div class="trend-list-item"><span>${r[0].replace('/', '年')}月</span><strong>¥${r[colIdx].toLocaleString()}</strong></div>`).join('');
+    }
+
+    function closeTrend() { document.getElementById('trend-view').classList.add('display-none'); }
+
     document.getElementById('kakeiboForm').onsubmit = async function(e) {
       e.preventDefault();
-      if (!GAS_URL.startsWith("http")) { alert("GASのURLを設定してください"); return; }
-      
+      calculateAmount(document.getElementById('amount'));
       document.getElementById('loading').style.display = 'flex';
       const payload = {
         method: 'add',
@@ -164,18 +177,12 @@
         category: document.getElementById('category').value,
         memo: document.getElementById('memo').value
       };
-      
-      try {
-        await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
-        this.reset();
-        document.getElementById('date').value = new Date().toISOString().substring(0, 10);
-        updateForm();
-        alert("記録しました");
-      } catch (e) {
-        alert("送信に失敗しました");
-      } finally {
-        document.getElementById('loading').style.display = 'none';
-      }
+      await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
+      document.getElementById('loading').style.display = 'none';
+      this.reset();
+      document.getElementById('date').value = new Date().toISOString().substring(0, 10);
+      updateForm();
+      alert("記録しました");
     };
 
     window.onload = () => {
