@@ -18,11 +18,18 @@
     .field { margin-bottom: 0.6rem !important; }
     .input, .select select { font-size: 1.1rem !important; background-color: var(--card) !important; color: #fff !important; border: 1px solid var(--border) !important; height: 2.6em; }
     .label { color: var(--sub) !important; font-size: 0.9rem !important; margin-bottom: 0.2rem !important; font-weight: normal; }
+    
+    /* 統計ページ：メインの支出金額を白に */
     .stat-card { border-bottom: 1px solid var(--border); padding: 20px 0; }
-    .main-expense { font-size: 2.3rem; font-weight: bold; line-height: 1.1; margin: 5px 0; }
+    .main-expense { font-size: 2.3rem; font-weight: bold; line-height: 1.1; margin: 5px 0; color: #ffffff; }
+    
     .sub-info { font-size: 1rem; color: var(--sub); display: flex; gap: 20px; }
     .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+    
+    /* 統計ページ：各項目の金額を白に */
     .detail-item { font-size: 1rem; background: var(--card); border: 1px solid var(--border); padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; }
+    .detail-item strong { color: #ffffff; }
+
     .history-item { border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 1rem; position: relative; }
     .history-top { display: flex; justify-content: space-between; align-items: flex-end; padding-right: 50px; }
     .history-date { font-size: 0.85rem; color: var(--sub); }
