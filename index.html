@@ -204,7 +204,7 @@
         currentStatsData = data.statsBody;
         currentHistoryData = data.history; // 履歴データを保存
         
-        // 【新機能】データ内に存在する「月」の一覧を重複なく自動抽出してフィルターの選択肢を作る処理
+        // ★不具合修正：スラッシュ区切りなどどんな日付形式でも正しく「月単位」でセットする
         updateMonthFilterOptions(data.history);
         
         applyFilter(); // 履歴リストの描画（フィルター関数に処理を委ねる）
@@ -236,21 +236,31 @@
       }
     }
 
-    // 【新機能の補助関数】履歴データから「YYYY-MM」の形式を抜き出してドロップダウンにセットする関数
+    // ★不具合修正：履歴データの日付文字列を安全に「年・月」として解析し、「26年7月」形式の選択肢を作る
     function updateMonthFilterOptions(history) {
       const monthSelect = document.getElementById('filter-month');
-      // いったん「すべての月」以外を削除して初期化
       monthSelect.innerHTML = '<option value="all">すべての月</option>';
       
-      // 履歴の日付（例: 2026-07-05）の頭7文字（2026-07）を切り出して重複を取り除く
-      const months = [...new Set(history.map(item => item.date.substring(0, 7)))];
-      // 新しい順（降順）に並び替える
-      months.sort().reverse();
+      const monthSet = new Set();
+      history.forEach(item => {
+        if (!item.date) return;
+        const d = new Date(item.date); // どんな形式の日付でも自動パース
+        if (!isNaN(d.getTime())) {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          monthSet.add(`${year}-${month}`); // 一旦 "2026-07" の形で重複なく保存
+        }
+      });
       
-      // 選択肢を追加
+      // 新しい月が上に来るようにソート
+      const months = [...monthSet].sort().reverse();
+      
+      // 選択肢の表示を「26年7月」の形に整形してドロップダウンにセット
       months.forEach(m => {
-        const parts = m.split('-');
-        const label = parts[0] + "年" + parts[1] + "月";
+        const parts = m.split('-'); // ["2026", "07"]
+        const shortYear = parts[0].substring(2); // "2026" → "26"
+        const cleanMonth = Number(parts[1]);    // "07" → 7
+        const label = shortYear + "年" + cleanMonth + "月";
         monthSelect.add(new Option(label, m));
       });
     }
@@ -264,7 +274,18 @@
       
       // 4つの条件すべてを満たすデータだけを抽出する
       const filteredData = currentHistoryData.filter(item => {
-        const matchMonth = (monthFilter === 'all' || item.date.startsWith(monthFilter));
+        // ★不具合修正：明細の日付を安全に「YYYY-MM」形式にして選択値と比較する
+        let matchMonth = true;
+        if (monthFilter !== 'all') {
+          const d = new Date(item.date);
+          if (!isNaN(d.getTime())) {
+            const formattedItemMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            matchMonth = (formattedItemMonth === monthFilter);
+          } else {
+            matchMonth = false;
+          }
+        }
+
         const matchType = (typeFilter === 'all' || item.type === typeFilter);
         const matchAccount = (accountFilter === 'all' || item.account === accountFilter);
         const matchCategory = (categoryFilter === 'all' || item.category === categoryFilter);
@@ -318,7 +339,7 @@
       };
       
       await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
-      document.getElementById('loading').style.display = 'none';
+      document.getElementById('loading').style.none;
       this.reset(); // 入力欄をクリア
       document.getElementById('date').value = new Date().toISOString().substring(0, 10); // 日付を今日に戻す
       updateForm();
