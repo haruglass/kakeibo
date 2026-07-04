@@ -190,6 +190,7 @@
     function switchTab(tab) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.add('display-none'));
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('is-active'));
+      document.getElementById('page-' + tab).classList.remove('remove-none'); // 修正箇所の安全対策
       document.getElementById('page-' + tab).classList.remove('display-none');
       document.getElementById('nav-' + tab).classList.add('is-active');
       if(tab !== 'input') loadData(); // 記録ページ以外を開いた時は最新のデータを読み込む
@@ -201,11 +202,11 @@
       try {
         const response = await fetch(GAS_URL);
         const data = await response.json();
-        currentStatsData = data.statsBody;
+        currentStatsData = data.statsBody; // 統計データを保存（過去の全月データが含まれる）
         currentHistoryData = data.history; // 履歴データを保存
         
-        // ★不具合修正：スラッシュ区切りなどどんな日付形式でも正しく「月単位」でセットする
-        updateMonthFilterOptions(data.history);
+        // ★修正：不確実な履歴データの日付ではなく、統計の確実な月データ（data.statsBody）から選択肢を作る
+        updateMonthFilterOptions(data.statsBody);
         
         applyFilter(); // 履歴リストの描画（フィルター関数に処理を委ねる）
 
@@ -236,33 +237,36 @@
       }
     }
 
-    // ★不具合修正：履歴データの日付文字列を安全に「年・月」として解析し、「26年7月」形式の選択肢を作る
-    function updateMonthFilterOptions(history) {
+    // ★大修正：統計用の月データ（例: "2026/07"）を確実にパースして、すべての月を「26年7月」形式でセットする関数
+    function updateMonthFilterOptions(statsBody) {
       const monthSelect = document.getElementById('filter-month');
+      // 現在の選択状態を記憶しておく
+      const currentSelectedValue = monthSelect.value;
+      
       monthSelect.innerHTML = '<option value="all">すべての月</option>';
       
-      const monthSet = new Set();
-      history.forEach(item => {
-        if (!item.date) return;
-        const d = new Date(item.date); // どんな形式の日付でも自動パース
-        if (!isNaN(d.getTime())) {
-          const year = d.getFullYear();
-          const month = String(d.getMonth() + 1).padStart(2, '0');
-          monthSet.add(`${year}-${month}`); // 一旦 "2026-07" の形で重複なく保存
+      // statsBodyの各行の先頭（row[0]）には "2026/07" や "2025/12" の形式でデータが入っている
+      statsBody.forEach(row => {
+        const dateStr = row[0]; // 例: "2026/07" または "2026-07"
+        if (!dateStr) return;
+        
+        // スラッシュやハイフンで分割
+        const parts = dateStr.split(/[\/\-]/);
+        if (parts.length >= 2) {
+          const fullYear = parts[0];              // "2026"
+          const shortYear = fullYear.substring(2); // "26"
+          const cleanMonth = Number(parts[1]);     // "07" → 7
+          
+          const label = shortYear + "年" + cleanMonth + "月";
+          // フィルター内部の比較用に、ハイフン形式（"2026-07"）に統一して値をセット
+          const value = fullYear + "-" + String(cleanMonth).padStart(2, '0');
+          
+          monthSelect.add(new Option(label, value));
         }
       });
       
-      // 新しい月が上に来るようにソート
-      const months = [...monthSet].sort().reverse();
-      
-      // 選択肢の表示を「26年7月」の形に整形してドロップダウンにセット
-      months.forEach(m => {
-        const parts = m.split('-'); // ["2026", "07"]
-        const shortYear = parts[0].substring(2); // "2026" → "26"
-        const cleanMonth = Number(parts[1]);    // "07" → 7
-        const label = shortYear + "年" + cleanMonth + "月";
-        monthSelect.add(new Option(label, m));
-      });
+      // 記憶していた選択状態を復元（なければ「すべての月」）
+      monthSelect.value = currentSelectedValue || "all";
     }
 
     // 【フィルター機能】選択された 月・区分・資産・カテゴリー に一致する明細だけを絞り込んで描画する関数
@@ -274,16 +278,29 @@
       
       // 4つの条件すべてを満たすデータだけを抽出する
       const filteredData = currentHistoryData.filter(item => {
-        // ★不具合修正：明細の日付を安全に「YYYY-MM」形式にして選択値と比較する
+        // ★修正：履歴側の日付（スラッシュ区切り・シリアル値誤認対策）から安全に「YYYY-MM」形式を作って比較する
         let matchMonth = true;
-        if (monthFilter !== 'all') {
-          const d = new Date(item.date);
-          if (!isNaN(d.getTime())) {
-            const formattedItemMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            matchMonth = (formattedItemMonth === monthFilter);
-          } else {
-            matchMonth = false;
+        if (monthFilter !== 'all' && item.date) {
+          // 日付文字列から数字だけを抽出して成形を試みる
+          const dateClean = String(item.date).replace(/\//g, '-'); // スラッシュをハイフンに置換
+          let itemYearMonth = "";
+          
+          if (dateClean.includes('-')) {
+            const p = dateClean.split('-');
+            if (p[0].length === 4) {
+              itemYearMonth = p[0] + "-" + p[1].padStart(2, '0');
+            }
           }
+          
+          // 上記で判定できない場合は通常のDateパースを試みる
+          if (!itemYearMonth) {
+            const d = new Date(item.date);
+            if (!isNaN(d.getTime())) {
+              itemYearMonth = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0');
+            }
+          }
+          
+          matchMonth = (itemYearMonth === monthFilter);
         }
 
         const matchType = (typeFilter === 'all' || item.type === typeFilter);
@@ -339,7 +356,7 @@
       };
       
       await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
-      document.getElementById('loading').style.none;
+      document.getElementById('loading').style.display = 'none';
       this.reset(); // 入力欄をクリア
       document.getElementById('date').value = new Date().toISOString().substring(0, 10); // 日付を今日に戻す
       updateForm();
