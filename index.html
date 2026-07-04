@@ -19,14 +19,15 @@
     .input, .select select { font-size: 1.1rem !important; background-color: var(--card) !important; color: #fff !important; border: 1px solid var(--border) !important; height: 2.6em; }
     .label { color: var(--sub) !important; font-size: 0.9rem !important; margin-bottom: 0.2rem !important; font-weight: normal; }
     
-    /* 統計ページ：メインの支出金額を白に */
+    /* フィルターエリアのスタイル */
+    .filter-area { display: flex; gap: 8px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .filter-select { flex: 1; }
+    .filter-select select { background-color: #1a1a1a !important; color: #fff !important; border: 1px solid var(--border) !important; width: 100%; height: 2.4em; border-radius: 4px; font-size: 0.9rem; padding-left: 8px; }
+
     .stat-card { border-bottom: 1px solid var(--border); padding: 20px 0; }
     .main-expense { font-size: 2.3rem; font-weight: bold; line-height: 1.1; margin: 5px 0; color: #ffffff; }
-    
     .sub-info { font-size: 1rem; color: var(--sub); display: flex; gap: 20px; }
     .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
-    
-    /* 統計ページ：各項目の金額を白に */
     .detail-item { font-size: 1rem; background: var(--card); border: 1px solid var(--border); padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; }
     .detail-item strong { color: #ffffff; }
 
@@ -66,7 +67,40 @@
         <button type="submit" id="submitBtn" class="btn-submit">記録する</button>
       </form>
     </div>
-    <div id="page-history" class="tab-content display-none"><div id="history-list"></div></div>
+    
+    <div id="page-history" class="tab-content display-none">
+      <div class="filter-area">
+        <div class="filter-select">
+          <select id="filter-account" onchange="applyFilter()">
+            <option value="all">すべての資産</option>
+            <option value="現金">現金</option>
+            <option value="ゆうちょ">ゆうちょ</option>
+            <option value="給料">給料</option>
+            <option value="PayPay">PayPay</option>
+            <option value="バンドル">バンドル</option>
+            <option value="メルペイ">メルペイ</option>
+          </select>
+        </div>
+        <div class="filter-select">
+          <select id="filter-category" onchange="applyFilter()">
+            <option value="all">すべてのカテゴリ</option>
+            <option value="食費">食費</option>
+            <option value="趣味">趣味</option>
+            <option value="服 美容">服 美容</option>
+            <option value="生活費">生活費</option>
+            <option value="交際費">交際費</option>
+            <option value="医療">医療</option>
+            <option value="年金">年金</option>
+            <option value="給料">給料</option>
+            <option value="お小遣い">お小遣い</option>
+            <option value="その他">その他</option>
+            <option value="調整">調整</option>
+          </select>
+        </div>
+      </div>
+      <div id="history-list"></div>
+    </div>
+    
     <div id="page-balance" class="tab-content display-none"><div id="balance-list"></div></div>
     <div id="page-stats" class="tab-content display-none"><div id="stats-list"></div></div>
     <div id="trend-view" class="display-none">
@@ -88,6 +122,7 @@
     const expenseLabels = ["食費", "趣味", "服 美容", "生活費", "交際費", "医療", "その他", "調整"];
     const incomeLabels = ["年金", "給料", "お小遣い", "利子", "その他"];
     let currentStatsData = [];
+    let currentHistoryData = []; // フィルター用に取得データを保持する変数
 
     function calculateAmount(input) {
       try {
@@ -120,13 +155,9 @@
         const response = await fetch(GAS_URL);
         const data = await response.json();
         currentStatsData = data.statsBody;
+        currentHistoryData = data.history; // 履歴データを記憶
         
-        document.getElementById('history-list').innerHTML = data.history.map(item => `
-          <div class="history-item">
-            <div class="history-top"><span>${item.date} · ${item.account}</span><strong>¥${Number(item.amount).toLocaleString()}</strong></div>
-            <div style="font-size:0.85rem; color:var(--sub)">${item.category} (${item.type}) ${item.memo ? '· '+item.memo : ''}</div>
-            <div class="delete-btn" onclick="confirmDelete(${item.rowNum})">削除</div>
-          </div>`).join('');
+        applyFilter(); // 読み込み時にフィルターを適用して描画
 
         document.getElementById('balance-list').innerHTML = data.balances.map(row => `
           <div class="is-flex is-justify-content-space-between py-4" style="border-bottom:1px solid var(--border); font-size:1.3rem">
@@ -151,6 +182,25 @@
       } finally {
         document.getElementById('loading').style.display = 'none';
       }
+    }
+
+    // 絞り込みを実行する新しい関数
+    function applyFilter() {
+      const accountFilter = document.getElementById('filter-account').value;
+      const categoryFilter = document.getElementById('filter-category').value;
+      
+      const filteredData = currentHistoryData.filter(item => {
+        const matchAccount = (accountFilter === 'all' || item.account === accountFilter);
+        const matchCategory = (categoryFilter === 'all' || item.category === categoryFilter);
+        return matchAccount && matchCategory;
+      });
+
+      document.getElementById('history-list').innerHTML = filteredData.map(item => `
+        <div class="history-item">
+          <div class="history-top"><span>${item.date} · ${item.account}</span><strong>¥${Number(item.amount).toLocaleString()}</strong></div>
+          <div style="font-size:0.85rem; color:var(--sub)">${item.category} (${item.type}) ${item.memo ? '· '+item.memo : ''}</div>
+          <div class="delete-btn" onclick="confirmDelete(${item.rowNum})">削除</div>
+        </div>`).join('');
     }
 
     async function confirmDelete(rowNum) {
