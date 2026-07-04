@@ -159,6 +159,7 @@
         
         applyFilter(); // 読み込み時にフィルターを適用して描画
 
+        
         document.getElementById('balance-list').innerHTML = data.balances.map(row => `
           <div class="is-flex is-justify-content-space-between py-4" style="border-bottom:1px solid var(--border); font-size:1.3rem">
             <span>${row[0]}</span><strong style="color:#fff">¥${Number(row[1]||0).toLocaleString()}</strong>
