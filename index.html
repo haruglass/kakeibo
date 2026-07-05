@@ -191,21 +191,26 @@
       if(tab !== 'input') loadData();
     }
 
-    // 文字列・数値から「年」と「月」の情報を安全に抜き出す関数
+    // 文字列・数値から「年」と「月」の情報を完全に安全に抜き出す関数
     function parseYearMonth(dateStr) {
       if (!dateStr) return null;
       const s = String(dateStr).trim();
       
-      // "2026/07" や "26-07" のように区切りがある場合
-      const parts = s.split(/[\/\-]/);
+      // "2026/07/05" などの各種区切り文字をすべてハイフンに統一
+      const normalized = s.replace(/\//g, '-').replace(/\./g, '-');
+      const parts = normalized.split('-');
+      
       if (parts.length >= 2) {
         let y = parts[0].trim();
+        // 万が一、ISO 8601形式（2026-07-05T00:00...）が入ってきた場合の年部分の切り出し補正
+        if (y.includes('T')) y = y.split('T')[0];
+        
         if (y.length === 2) y = "20" + y;
         const m = String(Number(parts[1])).padStart(2, '0');
         return { year: y, month: m, shortYear: y.substring(2) };
       }
       
-      // 区切りがなく、単なる「7」や「07」のような月数値だけの場合
+      // 単なる「7」や「07」のような月数値データの場合
       const num = Number(s);
       if (!isNaN(num) && num >= 1 && num <= 12) {
         const currentYear = new Date().getFullYear(); // 2026年を補完
@@ -270,7 +275,7 @@
         const parsed = parseYearMonth(row[0]);
         if (parsed) {
           const label = parsed.shortYear + "年" + Number(parsed.month) + "月";
-          const value = parsed.year + "-" + parsed.month;
+          const value = parsed.year + "-" + parsed.month; // 例: "2026-07"
           monthSelect.add(new Option(label, value));
         }
       });
@@ -278,9 +283,9 @@
       monthSelect.value = currentSelectedValue || "all";
     }
 
-    // 【完全改修】どんな形式の日付データが来ても、確実に「2026-07」に変換して確実にフィルターをヒットさせる
+    // 【最高精度の文字列比較】履歴データ文字列からダイレクトに年月情報を抜き出す
     function applyFilter() {
-      const monthFilter = document.getElementById('filter-month').value;
+      const monthFilter = document.getElementById('filter-month').value; // 例: "2026-07"
       const typeFilter = document.getElementById('filter-type').value;
       const accountFilter = document.getElementById('filter-account').value;
       const categoryFilter = document.getElementById('filter-category').value;
@@ -288,27 +293,13 @@
       const filteredData = currentHistoryData.filter(item => {
         let matchMonth = true;
         if (monthFilter !== 'all' && item.date) {
-          let itemYearMonth = "";
-          
-          // 日付データをJavaScriptのDateオブジェクトとして強制解析
-          const d = new Date(item.date);
-          
-          if (!isNaN(d.getTime())) {
-            // 解析に成功した場合、確実な 4桁年-2桁月 の文字列を作る
-            itemYearMonth = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0');
+          const parsed = parseYearMonth(item.date);
+          if (parsed) {
+            const itemYearMonth = parsed.year + "-" + parsed.month; // 履歴から作成した "2026-07"
+            matchMonth = (itemYearMonth === monthFilter);
           } else {
-            // 万が一Dateオブジェクト変換に失敗した時の文字列用安全フォールバック
-            const dateClean = String(item.date).replace(/\//g, '-');
-            const p = dateClean.split('-');
-            if (p.length >= 2) {
-              let y = p[0].trim();
-              if (y.length === 2) y = "20" + y;
-              const m = String(Number(p[1])).padStart(2, '0');
-              itemYearMonth = y + "-" + m;
-            }
+            matchMonth = false;
           }
-          
-          matchMonth = (itemYearMonth === monthFilter);
         }
 
         const matchType = (typeFilter === 'all' || item.type === typeFilter);
@@ -317,13 +308,20 @@
         return matchMonth && matchType && matchAccount && matchCategory;
       });
 
-      // 画面に整形して出力（日付表示は元のitem.dateがそのまま活きるようにフォールバックを持たせる）
+      // 画面に整形して出力
       document.getElementById('history-list').innerHTML = filteredData.map(item => {
         let displayDate = item.date;
-        // 日付が標準のISO表記（例：2026-07-05T00:00:00.000Z）だった場合、見やすい「2026/07/05」に整える処理
-        const d = new Date(item.date);
-        if (!isNaN(d.getTime()) && String(item.date).includes('T')) {
-          displayDate = d.getFullYear() + "/" + String(d.getMonth() + 1).padStart(2, '0') + "/" + String(d.getDate()).padStart(2, '0');
+        const parsed = parseYearMonth(item.date);
+        if (parsed) {
+          // 履歴の日付表示を「2026/07/05」のような綺麗な文字列に統一する処理（文字型・オブジェクト型双方に対応）
+          const s = String(item.date);
+          const clean = s.replace(/\//g, '-').replace(/\./g, '-');
+          const parts = clean.split('-');
+          let dayStr = "01";
+          if (parts.length >= 3) {
+            dayStr = parts[2].trim().substring(0, 2);
+          }
+          displayDate = parsed.year + "/" + parsed.month + "/" + dayStr.padStart(2, '0');
         }
         
         return `
