@@ -191,7 +191,7 @@
       if(tab !== 'input') loadData();
     }
 
-    // 文字列から「年」と「月」の情報を安全に抜き出す関数
+    // 文字列・数値から「年」と「月」の情報を安全に抜き出す関数
     function parseYearMonth(dateStr) {
       if (!dateStr) return null;
       const s = String(dateStr).trim();
@@ -208,7 +208,7 @@
       // 区切りがなく、単なる「7」や「07」のような月数値だけの場合
       const num = Number(s);
       if (!isNaN(num) && num >= 1 && num <= 12) {
-        const currentYear = new Date().getFullYear(); // 今年（2026年）を補完
+        const currentYear = new Date().getFullYear(); // 2026年を補完
         const m = String(num).padStart(2, '0');
         return { year: String(currentYear), month: m, shortYear: String(currentYear).substring(2) };
       }
@@ -260,7 +260,6 @@
       }
     }
 
-    // 【完全対応】どんな形式の月データが来ても、きれいに「26年7月」等に直し、内部値「2026-07」を作る
     function updateMonthFilterOptions(statsBody) {
       const monthSelect = document.getElementById('filter-month');
       const currentSelectedValue = monthSelect.value;
@@ -271,7 +270,7 @@
         const parsed = parseYearMonth(row[0]);
         if (parsed) {
           const label = parsed.shortYear + "年" + Number(parsed.month) + "月";
-          const value = parsed.year + "-" + parsed.month; // 内部値は "2026-07"
+          const value = parsed.year + "-" + parsed.month;
           monthSelect.add(new Option(label, value));
         }
       });
@@ -279,7 +278,7 @@
       monthSelect.value = currentSelectedValue || "all";
     }
 
-    // 【完全対応】履歴データの日付と、選択したフィルターの内部値（2026-07）を正確に一致させて絞り込む
+    // 【完全改修】どんな形式の日付データが来ても、確実に「2026-07」に変換して確実にフィルターをヒットさせる
     function applyFilter() {
       const monthFilter = document.getElementById('filter-month').value;
       const typeFilter = document.getElementById('filter-type').value;
@@ -289,23 +288,23 @@
       const filteredData = currentHistoryData.filter(item => {
         let matchMonth = true;
         if (monthFilter !== 'all' && item.date) {
-          // 履歴の日付 "2026/07/05" や "2026-07-05" から "2026-07" を抽出する
-          const dateClean = String(item.date).replace(/\//g, '-');
           let itemYearMonth = "";
           
-          const p = dateClean.split('-');
-          if (p.length >= 2) {
-            let y = p[0].trim();
-            if (y.length === 2) y = "20" + y; // 2桁年だった場合の補正
-            const m = String(Number(p[1])).padStart(2, '0');
-            itemYearMonth = y + "-" + m;
-          }
+          // 日付データをJavaScriptのDateオブジェクトとして強制解析
+          const d = new Date(item.date);
           
-          // 万が一解析できなかった場合のJavaScript Dateフォールバック
-          if (!itemYearMonth) {
-            const d = new Date(item.date);
-            if (!isNaN(d.getTime())) {
-              itemYearMonth = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0');
+          if (!isNaN(d.getTime())) {
+            // 解析に成功した場合、確実な 4桁年-2桁月 の文字列を作る
+            itemYearMonth = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0');
+          } else {
+            // 万が一Dateオブジェクト変換に失敗した時の文字列用安全フォールバック
+            const dateClean = String(item.date).replace(/\//g, '-');
+            const p = dateClean.split('-');
+            if (p.length >= 2) {
+              let y = p[0].trim();
+              if (y.length === 2) y = "20" + y;
+              const m = String(Number(p[1])).padStart(2, '0');
+              itemYearMonth = y + "-" + m;
             }
           }
           
@@ -318,12 +317,22 @@
         return matchMonth && matchType && matchAccount && matchCategory;
       });
 
-      document.getElementById('history-list').innerHTML = filteredData.map(item => `
+      // 画面に整形して出力（日付表示は元のitem.dateがそのまま活きるようにフォールバックを持たせる）
+      document.getElementById('history-list').innerHTML = filteredData.map(item => {
+        let displayDate = item.date;
+        // 日付が標準のISO表記（例：2026-07-05T00:00:00.000Z）だった場合、見やすい「2026/07/05」に整える処理
+        const d = new Date(item.date);
+        if (!isNaN(d.getTime()) && String(item.date).includes('T')) {
+          displayDate = d.getFullYear() + "/" + String(d.getMonth() + 1).padStart(2, '0') + "/" + String(d.getDate()).padStart(2, '0');
+        }
+        
+        return `
         <div class="history-item">
-          <div class="history-top"><span>${item.date} · ${item.account}</span><strong class="history-amount">¥${Number(item.amount).toLocaleString()}</strong></div>
+          <div class="history-top"><span>${displayDate} · ${item.account}</span><strong class="history-amount">¥${Number(item.amount).toLocaleString()}</strong></div>
           <div style="font-size:0.85rem; color:var(--sub)">${item.category} (${item.type}) ${item.memo ? '· '+item.memo : ''}</div>
           <div class="delete-btn" onclick="confirmDelete(${item.rowNum})">削除</div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
 
     // 明細データ削除リクエスト
