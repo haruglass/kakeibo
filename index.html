@@ -9,7 +9,6 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link class="apple-touch-icon" href="icon.png">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
-
   
   <style>
     /* 【デザイン設定：カラー変数】ダークモードの基本色を定義 */
@@ -192,17 +191,30 @@
       if(tab !== 'input') loadData();
     }
 
-    // 【シンプル化】文字列から「年」と「月」の情報を安全に抽出する関数
-    function extractYearMonthStr(dateStr) {
-      if (!dateStr) return null;
-      const s = String(dateStr).trim();
-      // 「2026/07/03」や「2026-07-03」などの先頭部分から4桁の年と2桁の月を取り出す
+    // 【日付抽出関数】さまざまなデータ型から確実に年・月情報をテキスト（YYYY-MM形式）で取得するハイブリッド判定
+    function extractYearMonthStr(dateInput) {
+      if (!dateInput) return null;
+      const s = String(dateInput).trim();
+      
+      // 1. すでに綺麗な文字形式（2026/07/03 や 2026-07-03）で始まっている場合
       const match = s.match(/^(\d{4})[-/](\d{1,2})/);
       if (match) {
         return {
           year: match[1],
           month: match[2].padStart(2, '0'),
-          key: match[1] + "-" + match[2].padStart(2, '0') // 例: "2026-07"
+          key: match[1] + "-" + match[2].padStart(2, '0')
+        };
+      }
+      
+      // 2. スプレッドシートから日付オブジェクト形式や特殊なタイムスタンプ文字列で送られてきた場合のフォールバック解析
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        const year = String(d.getFullYear());
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        return {
+          year: year,
+          month: month,
+          key: year + "-" + month
         };
       }
       return null;
@@ -340,7 +352,7 @@
       };
       
       await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
-      document.getElementById('loading').style.none = 'none';
+      document.getElementById('loading').style.display = 'none';
       this.reset();
       document.getElementById('date').value = new Date().toISOString().substring(0, 10);
       updateForm();
