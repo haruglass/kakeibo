@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>家計簿</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <link rel="manifest" href="manifest.json">
+  <link class="main-manifest" rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link class="apple-touch-icon" href="icon.png">
@@ -191,32 +191,19 @@
       if(tab !== 'input') loadData();
     }
 
-    // 【超堅牢化】どんな形式（シリアル、ISO、スラッシュ、日本語）の日付データからでも、確実にJavaScriptのDateオブジェクトを生成する安全関数
-    function parseToDateObject(input) {
-      if (!input) return null;
-      const s = String(input).trim();
-      
-      // 1. 通常のDateオブジェクト解析が通る場合（ISO形式や2026/07/05など）
-      let d = new Date(s);
-      if (!isNaN(d.getTime())) return d;
-      
-      // 2. タイムスタンプ数値（ミリ秒）の場合
-      if (!isNaN(s) && s.length >= 10) {
-        d = new Date(Number(s));
-        if (!isNaN(d.getTime())) return d;
-      }
-      
-      // 3. 正規表現で「4桁または2桁の年」と「月」「日」を強制抽出するフォールバック
-      const match = s.match(/(\d{2,4})[-/年](\d{1,2})(?:[-/月](\d{1,2}))?/);
+    // 【シンプル化】文字列から「年」と「月」の情報を安全に抽出する関数
+    function extractYearMonthStr(dateStr) {
+      if (!dateStr) return null;
+      const s = String(dateStr).trim();
+      // 「2026/07/03」や「2026-07-03」などの先頭部分から4桁の年と2桁の月を取り出す
+      const match = s.match(/^(\d{4})[-/](\d{1,2})/);
       if (match) {
-        let year = parseInt(match[1], 10);
-        if (year < 100) year = (year < 50 ? 2000 : 1900) + year; // 26年なら2026年に補正
-        const month = parseInt(match[2], 10) - 1;
-        const day = match[3] ? parseInt(match[3], 10) : 1;
-        d = new Date(year, month, day);
-        if (!isNaN(d.getTime())) return d;
+        return {
+          year: match[1],
+          month: match[2].padStart(2, '0'),
+          key: match[1] + "-" + match[2].padStart(2, '0') // 例: "2026-07"
+        };
       }
-      
       return null;
     }
 
@@ -241,8 +228,8 @@
         
         // 統計情報の描画
         document.getElementById('stats-list').innerHTML = data.statsBody.map((row) => {
-          const d = parseToDateObject(row[0]);
-          const displayLabel = d ? String(d.getFullYear()).substring(2) + '年' + (d.getMonth() + 1) + '月' : row[0];
+          const ym = extractYearMonthStr(row[0]);
+          const displayLabel = ym ? ym.year.substring(2) + '年' + Number(ym.month) + '月' : row[0];
           return `
           <div class="stat-card">
             <div style="color:var(--sub)">${displayLabel}</div>
@@ -271,20 +258,17 @@
       monthSelect.innerHTML = '<option value="all">すべての月</option>';
       
       statsBody.forEach(row => {
-        const d = parseToDateObject(row[0]);
-        if (d) {
-          const year = d.getFullYear();
-          const month = String(d.getMonth() + 1).padStart(2, '0');
-          const label = String(year).substring(2) + "年" + Number(month) + "月";
-          const value = year + "-" + month; // 内部値は確実に "2026-07" の形式にする
-          monthSelect.add(new Option(label, value));
+        const ym = extractYearMonthStr(row[0]);
+        if (ym) {
+          const label = ym.year.substring(2) + "年" + Number(ym.month) + "月";
+          monthSelect.add(new Option(label, ym.key));
         }
       });
       
       monthSelect.value = currentSelectedValue || "all";
     }
 
-    // 【完全改修】安全オブジェクトから生成した "YYYY-MM" 同士で厳密比較をおこなう
+    // A列の文字列をそのまま使い、"YYYY-MM"の形で厳密に比較する
     function applyFilter() {
       const monthFilter = document.getElementById('filter-month').value; // 例: "2026-07"
       const typeFilter = document.getElementById('filter-type').value;
@@ -294,13 +278,8 @@
       const filteredData = currentHistoryData.filter(item => {
         let matchMonth = true;
         if (monthFilter !== 'all' && item.date) {
-          const d = parseToDateObject(item.date);
-          if (d) {
-            const itemYearMonth = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0');
-            matchMonth = (itemYearMonth === monthFilter);
-          } else {
-            matchMonth = false;
-          }
+          const ym = extractYearMonthStr(item.date);
+          matchMonth = (ym && ym.key === monthFilter);
         }
 
         const matchType = (typeFilter === 'all' || item.type === typeFilter);
@@ -309,17 +288,11 @@
         return matchMonth && matchType && matchAccount && matchCategory;
       });
 
-      // 画面に整形して出力
+      // 画面に整形して出力（日付はA列そのまま）
       document.getElementById('history-list').innerHTML = filteredData.map(item => {
-        let displayDate = item.date;
-        const d = parseToDateObject(item.date);
-        if (d) {
-          displayDate = d.getFullYear() + "/" + String(d.getMonth() + 1).padStart(2, '0') + "/" + String(d.getDate()).padStart(2, '0');
-        }
-        
         return `
         <div class="history-item">
-          <div class="history-top"><span>${displayDate} · ${item.account}</span><strong class="history-amount">¥${Number(item.amount).toLocaleString()}</strong></div>
+          <div class="history-top"><span>${item.date} · ${item.account}</span><strong class="history-amount">¥${Number(item.amount).toLocaleString()}</strong></div>
           <div style="font-size:0.85rem; color:var(--sub)">${item.category} (${item.type}) ${item.memo ? '· '+item.memo : ''}</div>
           <div class="delete-btn" onclick="confirmDelete(${item.rowNum})">削除</div>
         </div>`;
@@ -339,8 +312,8 @@
       document.getElementById('trend-view').classList.remove('display-none');
       document.getElementById('trend-title').innerText = label + " の推移";
       document.getElementById('trend-data-list').innerHTML = currentStatsData.map(r => {
-        const d = parseToDateObject(r[0]);
-        const displayMonth = d ? String(d.getFullYear()).substring(2) + '年' + (d.getMonth() + 1) + '月' : r[0];
+        const ym = extractYearMonthStr(r[0]);
+        const displayMonth = ym ? ym.year.substring(2) + '年' + Number(ym.month) + '月' : r[0];
         return `<div class="trend-list-item"><span>${displayMonth}</span><strong>¥${r[colIdx].toLocaleString()}</strong></div>`;
       }).join('');
     }
@@ -366,7 +339,7 @@
       };
       
       await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
-      document.getElementById('loading').style.display = 'none';
+      document.getElementById('loading').style.none = 'none';
       this.reset();
       document.getElementById('date').value = new Date().toISOString().substring(0, 10);
       updateForm();
