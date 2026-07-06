@@ -191,31 +191,30 @@
       if(tab !== 'input') loadData();
     }
 
-    // 文字列・数値から「年」と「月」の情報を完全に安全に抜き出す関数
-    function parseYearMonth(dateStr) {
-      if (!dateStr) return null;
-      const s = String(dateStr).trim();
+    // 【超堅牢化】どんな形式（シリアル、ISO、スラッシュ、日本語）の日付データからでも、確実にJavaScriptのDateオブジェクトを生成する安全関数
+    function parseToDateObject(input) {
+      if (!input) return null;
+      const s = String(input).trim();
       
-      // "2026/07/05" などの各種区切り文字をすべてハイフンに統一
-      const normalized = s.replace(/\//g, '-').replace(/\./g, '-');
-      const parts = normalized.split('-');
+      // 1. 通常のDateオブジェクト解析が通る場合（ISO形式や2026/07/05など）
+      let d = new Date(s);
+      if (!isNaN(d.getTime())) return d;
       
-      if (parts.length >= 2) {
-        let y = parts[0].trim();
-        // 万が一、ISO 8601形式（2026-07-05T00:00...）が入ってきた場合の年部分の切り出し補正
-        if (y.includes('T')) y = y.split('T')[0];
-        
-        if (y.length === 2) y = "20" + y;
-        const m = String(Number(parts[1])).padStart(2, '0');
-        return { year: y, month: m, shortYear: y.substring(2) };
+      // 2. タイムスタンプ数値（ミリ秒）の場合
+      if (!isNaN(s) && s.length >= 10) {
+        d = new Date(Number(s));
+        if (!isNaN(d.getTime())) return d;
       }
       
-      // 単なる「7」や「07」のような月数値データの場合
-      const num = Number(s);
-      if (!isNaN(num) && num >= 1 && num <= 12) {
-        const currentYear = new Date().getFullYear(); // 2026年を補完
-        const m = String(num).padStart(2, '0');
-        return { year: String(currentYear), month: m, shortYear: String(currentYear).substring(2) };
+      // 3. 正規表現で「4桁または2桁の年」と「月」「日」を強制抽出するフォールバック
+      const match = s.match(/(\d{2,4})[-/年](\d{1,2})(?:[-/月](\d{1,2}))?/);
+      if (match) {
+        let year = parseInt(match[1], 10);
+        if (year < 100) year = (year < 50 ? 2000 : 1900) + year; // 26年なら2026年に補正
+        const month = parseInt(match[2], 10) - 1;
+        const day = match[3] ? parseInt(match[3], 10) : 1;
+        d = new Date(year, month, day);
+        if (!isNaN(d.getTime())) return d;
       }
       
       return null;
@@ -242,8 +241,8 @@
         
         // 統計情報の描画
         document.getElementById('stats-list').innerHTML = data.statsBody.map((row) => {
-          const parsed = parseYearMonth(row[0]);
-          const displayLabel = parsed ? parsed.shortYear + '年' + Number(parsed.month) + '月' : row[0];
+          const d = parseToDateObject(row[0]);
+          const displayLabel = d ? String(d.getFullYear()).substring(2) + '年' + (d.getMonth() + 1) + '月' : row[0];
           return `
           <div class="stat-card">
             <div style="color:var(--sub)">${displayLabel}</div>
@@ -272,10 +271,12 @@
       monthSelect.innerHTML = '<option value="all">すべての月</option>';
       
       statsBody.forEach(row => {
-        const parsed = parseYearMonth(row[0]);
-        if (parsed) {
-          const label = parsed.shortYear + "年" + Number(parsed.month) + "月";
-          const value = parsed.year + "-" + parsed.month; // 例: "2026-07"
+        const d = parseToDateObject(row[0]);
+        if (d) {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const label = String(year).substring(2) + "年" + Number(month) + "月";
+          const value = year + "-" + month; // 内部値は確実に "2026-07" の形式にする
           monthSelect.add(new Option(label, value));
         }
       });
@@ -283,7 +284,7 @@
       monthSelect.value = currentSelectedValue || "all";
     }
 
-    // 【最高精度の文字列比較】履歴データ文字列からダイレクトに年月情報を抜き出す
+    // 【完全改修】安全オブジェクトから生成した "YYYY-MM" 同士で厳密比較をおこなう
     function applyFilter() {
       const monthFilter = document.getElementById('filter-month').value; // 例: "2026-07"
       const typeFilter = document.getElementById('filter-type').value;
@@ -293,9 +294,9 @@
       const filteredData = currentHistoryData.filter(item => {
         let matchMonth = true;
         if (monthFilter !== 'all' && item.date) {
-          const parsed = parseYearMonth(item.date);
-          if (parsed) {
-            const itemYearMonth = parsed.year + "-" + parsed.month; // 履歴から作成した "2026-07"
+          const d = parseToDateObject(item.date);
+          if (d) {
+            const itemYearMonth = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0');
             matchMonth = (itemYearMonth === monthFilter);
           } else {
             matchMonth = false;
@@ -311,17 +312,9 @@
       // 画面に整形して出力
       document.getElementById('history-list').innerHTML = filteredData.map(item => {
         let displayDate = item.date;
-        const parsed = parseYearMonth(item.date);
-        if (parsed) {
-          // 履歴の日付表示を「2026/07/05」のような綺麗な文字列に統一する処理（文字型・オブジェクト型双方に対応）
-          const s = String(item.date);
-          const clean = s.replace(/\//g, '-').replace(/\./g, '-');
-          const parts = clean.split('-');
-          let dayStr = "01";
-          if (parts.length >= 3) {
-            dayStr = parts[2].trim().substring(0, 2);
-          }
-          displayDate = parsed.year + "/" + parsed.month + "/" + dayStr.padStart(2, '0');
+        const d = parseToDateObject(item.date);
+        if (d) {
+          displayDate = d.getFullYear() + "/" + String(d.getMonth() + 1).padStart(2, '0') + "/" + String(d.getDate()).padStart(2, '0');
         }
         
         return `
@@ -346,8 +339,8 @@
       document.getElementById('trend-view').classList.remove('display-none');
       document.getElementById('trend-title').innerText = label + " の推移";
       document.getElementById('trend-data-list').innerHTML = currentStatsData.map(r => {
-        const parsed = parseYearMonth(r[0]);
-        const displayMonth = parsed ? parsed.shortYear + '年' + Number(parsed.month) + '月' : r[0];
+        const d = parseToDateObject(r[0]);
+        const displayMonth = d ? String(d.getFullYear()).substring(2) + '年' + (d.getMonth() + 1) + '月' : r[0];
         return `<div class="trend-list-item"><span>${displayMonth}</span><strong>¥${r[colIdx].toLocaleString()}</strong></div>`;
       }).join('');
     }
