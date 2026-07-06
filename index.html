@@ -175,4 +175,207 @@
     function updateForm() {
       const type = document.getElementById('type').value;
       document.getElementById('transfer-accounts').classList.toggle('display-none', type !== '振替');
-      document.getElementById('
+      document.getElementById('standard-account').classList.toggle('display-none', type === '振替');
+      document.getElementById('category-field').classList.toggle('display-none', type === '振替');
+      const catSelect = document.getElementById('category');
+      catSelect.innerHTML = '';
+      if (categories[type]) categories[type].forEach(c => catSelect.add(new Option(c, c)));
+    }
+
+    // タブ切り替え
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('display-none'));
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('is-active'));
+      document.getElementById('page-' + tab).classList.remove('display-none');
+      document.getElementById('nav-' + tab).classList.add('is-active');
+      if(tab !== 'input') loadData();
+    }
+
+    // 【修正版：日付抽出関数】集計シートの多様な形式に対応し、確実に年・月・キー情報を抽出する
+    function extractYearMonthStr(dateInput) {
+      if (!dateInput) return null;
+      const s = String(dateInput).trim();
+      
+      // 1. 「2026/07/03」や「2026-07-03」などの文字列形式
+      const matchSlashOrDash = s.match(/^(\d{4})[-/](\d{1,2})/);
+      if (matchSlashOrDash) {
+        return {
+          year: matchSlashOrDash[1],
+          month: matchSlashOrDash[2].padStart(2, '0'),
+          key: matchSlashOrDash[1] + "-" + matchSlashOrDash[2].padStart(2, '0')
+        };
+      }
+      
+      // 2. 「2026年7月」などの日本語混じりの形式
+      const matchJapanese = s.match(/^(\d{4})年(\d{1,2})月/);
+      if (matchJapanese) {
+        return {
+          year: matchJapanese[1],
+          month: matchJapanese[2].padStart(2, '0'),
+          key: matchJapanese[1] + "-" + matchJapanese[2].padStart(2, '0')
+        };
+      }
+      
+      // 3. スプレッドシートの日付オブジェクトやタイムスタンプからの復元
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        const year = String(d.getFullYear());
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        return {
+          year: year,
+          month: month,
+          key: year + "-" + month
+        };
+      }
+      return null;
+    }
+
+    // スプレッドシートからデータをロード
+    async function loadData() {
+      document.getElementById('loading').style.display = 'flex';
+      try {
+        const response = await fetch(GAS_URL);
+        const data = await response.json();
+        currentStatsData = data.statsBody;
+        currentHistoryData = data.history;
+        
+        // 月選択肢を生成
+        updateMonthFilterOptions(data.statsBody);
+        applyFilter();
+
+        // 資産残高リストの描画
+        document.getElementById('balance-list').innerHTML = data.balances.map(row => `
+          <div class="is-flex is-justify-content-space-between py-4" style="border-bottom:1px solid var(--border); font-size:1.3rem">
+            <span>${row[0]}</span><strong style="color:#fff">¥${Number(row[1]||0).toLocaleString()}</strong>
+          </div>`).join('');
+        
+        // 統計情報の描画
+        document.getElementById('stats-list').innerHTML = data.statsBody.map((row) => {
+          const ym = extractYearMonthStr(row[0]);
+          const displayLabel = ym ? ym.year.substring(2) + '年' + Number(ym.month) + '月' : row[0];
+          return `
+          <div class="stat-card">
+            <div style="color:var(--sub)">${displayLabel}</div>
+            <div onclick="showTrend('支出合計', 1)">
+              <div class="main-expense">¥${row[1].toLocaleString()}</div>
+              <div class="sub-info">
+                <span onclick="event.stopPropagation(); showTrend('収入合計', 11);" style="border-bottom:1px solid var(--sub)">収入 ¥${row[11].toLocaleString()}</span>
+                <span onclick="event.stopPropagation(); showTrend('収支', 17);" style="border-bottom:1px solid var(--sub)">収支 ¥${row[17].toLocaleString()}</span>
+              </div>
+            </div>
+            <div class="detail-grid">
+              ${expenseLabels.map((l, i) => `<div class="detail-item" onclick="showTrend('${l}', ${i+2})"><span>${l}</span><strong>¥${row[i+2].toLocaleString()}</strong></div>`).join('')}
+              ${incomeLabels.map((l, i) => `<div class="detail-item" onclick="showTrend('${l}', ${i+12})"><span>${l}</span><strong>¥${row[i+12].toLocaleString()}</strong></div>`).join('')}
+            </div>
+          </div>`;
+        }).join('');
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    function updateMonthFilterOptions(statsBody) {
+      const monthSelect = document.getElementById('filter-month');
+      const currentSelectedValue = monthSelect.value;
+      
+      monthSelect.innerHTML = '<option value="all">すべての月</option>';
+      
+      statsBody.forEach(row => {
+        const ym = extractYearMonthStr(row[0]);
+        if (ym) {
+          const label = ym.year.substring(2) + "年" + Number(ym.month) + "月";
+          // すでに同じ月が選択肢にない場合のみ追加する（重複排除）
+          if (!Array.from(monthSelect.options).some(opt => opt.value === ym.key)) {
+            monthSelect.add(new Option(label, ym.key));
+          }
+        }
+      });
+      
+      monthSelect.value = currentSelectedValue || "all";
+    }
+
+    // A列の文字列をそのまま使い、"YYYY-MM"の形で厳密に比較する
+    function applyFilter() {
+      const monthFilter = document.getElementById('filter-month').value; // 例: "2026-07"
+      const typeFilter = document.getElementById('filter-type').value;
+      const accountFilter = document.getElementById('filter-account').value;
+      const categoryFilter = document.getElementById('filter-category').value;
+      
+      const filteredData = currentHistoryData.filter(item => {
+        let matchMonth = true;
+        if (monthFilter !== 'all' && item.date) {
+          const ym = extractYearMonthStr(item.date);
+          matchMonth = (ym && ym.key === monthFilter);
+        }
+
+        const matchType = (typeFilter === 'all' || item.type === typeFilter);
+        const matchAccount = (accountFilter === 'all' || item.account === accountFilter);
+        const matchCategory = (categoryFilter === 'all' || item.category === categoryFilter);
+        return matchMonth && matchType && matchAccount && matchCategory;
+      });
+
+      // 画面に整形して出力（日付はA列そのまま）
+      document.getElementById('history-list').innerHTML = filteredData.map(item => {
+        return `
+        <div class="history-item">
+          <div class="history-top"><span>${item.date} · ${item.account}</span><strong class="history-amount">¥${Number(item.amount).toLocaleString()}</strong></div>
+          <div style="font-size:0.85rem; color:var(--sub)">${item.category} (${item.type}) ${item.memo ? '· '+item.memo : ''}</div>
+          <div class="delete-btn" onclick="confirmDelete(${item.rowNum})">削除</div>
+        </div>`;
+      }).join('');
+    }
+
+    // 明細データ削除リクエスト
+    async function confirmDelete(rowNum) {
+      if (!confirm("削除しますか？")) return;
+      document.getElementById('loading').style.display = 'flex';
+      await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ method: 'delete', rowNum: rowNum }) });
+      loadData();
+    }
+
+    // トレンド推移表示
+    function showTrend(label, colIdx) {
+      document.getElementById('trend-view').classList.remove('display-none');
+      document.getElementById('trend-title').innerText = label + " の推移";
+      document.getElementById('trend-data-list').innerHTML = currentStatsData.map(r => {
+        const ym = extractYearMonthStr(r[0]);
+        const displayMonth = ym ? ym.year.substring(2) + '年' + Number(ym.month) + '月' : r[0];
+        return `<div class="trend-list-item"><span>${displayMonth}</span><strong>¥${r[colIdx].toLocaleString()}</strong></div>`;
+      }).join('');
+    }
+
+    function closeTrend() { document.getElementById('trend-view').classList.add('display-none'); }
+
+    // 家計簿データ送信処理
+    document.getElementById('kakeiboForm').onsubmit = async function(e) {
+      e.preventDefault();
+      calculateAmount(document.getElementById('amount'));
+      document.getElementById('loading').style.display = 'flex';
+      
+      const payload = {
+        method: 'add',
+        date: document.getElementById('date').value,
+        type: document.getElementById('type').value,
+        amount: document.getElementById('amount').value,
+        account: document.getElementById('account').value,
+        accountFrom: document.getElementById('accountFrom').value,
+        accountTo: document.getElementById('accountTo').value,
+        category: document.getElementById('category').value,
+        memo: document.getElementById('memo').value
+      };
+      
+      await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
+      document.getElementById('loading').style.display = 'none';
+      this.reset();
+      document.getElementById('date').value = new Date().toISOString().substring(0, 10);
+      updateForm();
+      alert("記録しました");
+    };
+
+    window.onload = () => {
+      document.getElementById('date').value = new Date().toISOString().substring(0, 10);
+      updateForm();
+    };
+  </script>
+</body>
+</html>
